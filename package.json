@@ -11,6 +11,7 @@
     "test": "node --test \"test/**/*.test.ts\"",
     "test:known-gap": "node --test test/known-gap.ts",
     "replay": "node src/replay.ts",
+    "bench": "node bench/scale.ts",
     "typecheck": "tsc"
   },
   "devDependencies": {

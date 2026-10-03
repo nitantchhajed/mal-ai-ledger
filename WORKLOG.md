@@ -20,3 +20,4 @@ Timestamps are local (IST), taken from `date` at the time of writing.
 | 2026-10-03 14:38 IST | AMBIGUITIES.md: 36 items, each with resolution, reason and (where one exists) the test that pins it; the ones that move a printed number are flagged. |
 | 2026-10-03 14:39 IST | REJECTED.md: criteria #2, #6, #7, #8 refused with worked arithmetic; #1/#3/#4/#5 accepted with notes; 8 abandoned approaches, all from this build. Re-ran the no-E7 counterfactual to confirm the 376.03 vs 466.03 available-balance figure before citing it. |
 | 2026-10-03 14:40 IST | README: how to run each script, how to read each block of the report, results table, design summary. gh CLI now available; repo created public and pushed. |
+| 2026-10-03 14:42 IST | Benchmark (100 accounts, 6 days, 5 % backdated) at 600 / 6k / 60k events: ingest 5 → 98 → 4490 ms (quadratic), end-of-day 36 → 59 → 545 ms (linear). Ingest breaks first. Suspect: duplicate-id check scans every past outcome. |
