@@ -155,19 +155,21 @@ export class Ledger {
         const parts = allocate(total, event.instalments ?? 1);
         parts.forEach((amt, i) =>
           this.#book(event.account, 'CREDIT', amt, event.valueDay, parts.length > 1 ? `${event.id}#${i + 1}` : event.id));
-        return this.#record(event, 'ACCEPTED');
+        const cur = this.currency(event.account);
+        return this.#record(event, 'ACCEPTED', parts.length > 1 ? `booked ${parts.map(p => format(cur, p)).join(' + ')}` : undefined);
       }
       case 'DEBIT':
         this.#book(event.account, 'DEBIT', -parse(this.currency(event.account), event.amount), event.valueDay, event.id);
         return this.#record(event, 'ACCEPTED');
       case 'REVERSAL': {
-        const original = this.#entries.filter(e => e.source === event.reverses && (e.kind === 'CREDIT' || e.kind === 'DEBIT'));
+        const original = this.#entries.filter(e => e.source.split('#')[0] === event.reverses && (e.kind === 'CREDIT' || e.kind === 'DEBIT'));
         if (original.length === 0) return this.#record(event, 'REJECTED', `no credit/debit from ${event.reverses} to reverse`);
         if (original.some(e => e.account !== event.account)) return this.#record(event, 'REJECTED', `${event.reverses} belongs to another account`);
         if (this.#entries.some(e => e.kind === 'REVERSAL' && e.ref === event.reverses))
           return this.#record(event, 'REJECTED', `${event.reverses} already reversed`);
         for (const o of original) this.#book(event.account, 'REVERSAL', -o.amount, event.valueDay, event.id, event.reverses);
-        return this.#record(event, 'ACCEPTED');
+        const back = -original.reduce((s, o) => s + o.amount, 0n);
+        return this.#record(event, 'ACCEPTED', `${back > 0n ? '+' : ''}${format(this.currency(event.account), back)} value D${event.valueDay}`);
       }
       case 'AUTHORIZATION': {
         const cur = this.currency(event.account);

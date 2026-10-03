@@ -63,3 +63,10 @@ test('append-only: history arrays cannot be spliced by callers', () => {
   assert.throws(() => { (l.entries as unknown[]).pop(); }, TypeError);
   assert.equal(l.entries.length, 1);
 });
+
+test('reversing an instalment credit reverses every instalment', () => {
+  const l = fresh();
+  l.apply({ id: 'E10', day: 5, type: 'CREDIT', account: 'ACC-002', amount: '10.000', valueDay: 5, instalments: 3 });
+  assert.equal(l.apply({ id: 'R', day: 5, type: 'REVERSAL', account: 'ACC-002', reverses: 'E10', valueDay: 5 }).reason, '-10.000 value D5');
+  assert.equal(l.balance('ACC-002'), 0n);
+});
