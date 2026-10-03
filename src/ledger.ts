@@ -274,6 +274,8 @@ export class Ledger {
     if (this.#seen.has(e.id)) return `duplicate event id ${e.id}`;
     if (!this.#currency.has(e.account)) return `unknown account ${e.account}`;
     if (!Number.isInteger(e.valueDay) || e.valueDay < 1) return `invalid value day ${e.valueDay}`;
+    if (e.type === 'CREDIT' && e.instalments !== undefined && !(Number.isInteger(e.instalments) && e.instalments >= 1))
+      return `invalid instalment count ${e.instalments}`;
     if ('amount' in e) {
       let amt: bigint;
       try { amt = parse(this.currency(e.account), e.amount); } catch (x) { return (x as Error).message; }

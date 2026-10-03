@@ -44,10 +44,11 @@ test('boundary validation rejects and records, never throws', () => {
   assert.equal(l.apply({ id: 'X1', day: 1, type: 'DEBIT', account: 'ACC-001', amount: '1.005', valueDay: 1 }).status, 'REJECTED');
   assert.equal(l.apply({ id: 'X2', day: 1, type: 'DEBIT', account: 'ACC-404', amount: '1.00', valueDay: 1 }).status, 'REJECTED');
   assert.equal(l.apply({ id: 'X3', day: 1, type: 'CREDIT', account: 'ACC-001', amount: '0.00', valueDay: 1 }).status, 'REJECTED');
+  assert.equal(l.apply({ id: 'X4', day: 1, type: 'CREDIT', account: 'ACC-001', amount: '1.00', valueDay: 1, instalments: 0 }).status, 'REJECTED');
   l.apply({ id: 'E1', day: 1, type: 'CREDIT', account: 'ACC-001', amount: '1.00', valueDay: 1 });
   assert.equal(l.apply({ id: 'E1', day: 1, type: 'CREDIT', account: 'ACC-001', amount: '1.00', valueDay: 1 }).status, 'REJECTED', 'replayed event id is not double-booked');
   assert.equal(l.balance('ACC-001'), 100n);
-  assert.equal(l.outcomes.length, 5, 'every event, rejected or not, is in the log');
+  assert.equal(l.outcomes.length, 6, 'every event, rejected or not, is in the log');
 });
 
 test('append-only: entries and outcomes are frozen', () => {
