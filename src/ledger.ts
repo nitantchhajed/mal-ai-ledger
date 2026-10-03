@@ -1,4 +1,4 @@
-import { type Currency, allocate, parse } from './money.ts';
+import { type Currency, allocate, format, parse } from './money.ts';
 
 export type Day = number;
 export type AccountId = string;
@@ -7,9 +7,11 @@ export type AccountId = string;
 export type Event =
   | { id: string; day: Day; type: 'CREDIT'; account: AccountId; amount: string; valueDay: Day; instalments?: number }
   | { id: string; day: Day; type: 'DEBIT'; account: AccountId; amount: string; valueDay: Day }
-  | { id: string; day: Day; type: 'REVERSAL'; account: AccountId; reverses: string; valueDay: Day };
+  | { id: string; day: Day; type: 'REVERSAL'; account: AccountId; reverses: string; valueDay: Day }
+  | { id: string; day: Day; type: 'AUTHORIZATION'; account: AccountId; authId: string; amount: string; valueDay: Day }
+  | { id: string; day: Day; type: 'SETTLEMENT'; account: AccountId; authId: string; amount: string; valueDay: Day };
 
-export type EntryKind = 'CREDIT' | 'DEBIT' | 'REVERSAL';
+export type EntryKind = 'CREDIT' | 'DEBIT' | 'REVERSAL' | 'SETTLEMENT';
 
 /**
  * One line in the journal. Signed amount: credit > 0, debit < 0.
@@ -23,17 +25,35 @@ export interface Entry {
   readonly valueDay: Day;
   readonly bookedDay: Day;
   readonly source: string; // event id that produced it
-  readonly ref?: string; // what it points at (reversed event id)
+  readonly ref?: string; // what it points at (reversed event id, settled auth id)
 }
 
-export type Status = 'ACCEPTED' | 'REJECTED';
+export type Status = 'ACCEPTED' | 'REJECTED' | 'APPROVED' | 'DECLINED';
 
 /** Every inbound event gets exactly one outcome, rejected ones included: the audit trail is the event log. */
 export interface Outcome {
   readonly event: Event;
   readonly bookedDay: Day;
   readonly status: Status;
-  readonly reason?: string;
+  readonly reason?: string; // why rejected/declined, or the inputs an approval was based on
+}
+
+export type AuthStatus = 'ACTIVE' | 'DECLINED' | 'SETTLED';
+
+/**
+ * One state transition of an authorization. Transitions are appended, never edited:
+ * an auth's current state is its latest transition, and its state on any past day is recoverable.
+ */
+export interface AuthTransition {
+  readonly authId: string;
+  readonly account: AccountId;
+  readonly status: AuthStatus;
+  readonly hold: bigint; // amount held while ACTIVE; 0 otherwise
+  readonly requested: bigint;
+  readonly settled?: bigint;
+  readonly released?: bigint; // hold minus settled amount, returned to available
+  readonly day: Day;
+  readonly source: string;
 }
 
 export class Ledger {
@@ -41,6 +61,7 @@ export class Ledger {
   readonly #currency: ReadonlyMap<AccountId, Currency>;
   readonly #entries: Entry[] = [];
   readonly #outcomes: Outcome[] = [];
+  readonly #auths: AuthTransition[] = [];
 
   constructor(accounts: Record<AccountId, Currency>) {
     this.#currency = new Map(Object.entries(accounts));
@@ -50,6 +71,7 @@ export class Ledger {
   // Frozen copies: callers can read history but cannot push into or splice it.
   get entries(): readonly Entry[] { return Object.freeze([...this.#entries]); }
   get outcomes(): readonly Outcome[] { return Object.freeze([...this.#outcomes]); }
+  get authTransitions(): readonly AuthTransition[] { return Object.freeze([...this.#auths]); }
   currency(account: AccountId): Currency {
     const c = this.#currency.get(account);
     if (!c) throw new Error(`unknown account ${account}`);
@@ -66,6 +88,24 @@ export class Ledger {
     for (const e of this.#entries)
       if (e.account === account && e.valueDay <= valueDay && e.bookedDay <= knownAt) sum += e.amount;
     return sum; // ponytail: O(entries) scan per query; per-account, per-day running totals once volume matters
+  }
+
+  /** Latest state of each authorization as known at end of `knownAt`. */
+  authorizations(knownAt: Day = Infinity): Map<string, AuthTransition> {
+    const latest = new Map<string, AuthTransition>();
+    for (const t of this.#auths) if (t.day <= knownAt) latest.set(t.authId, t);
+    return latest;
+  }
+
+  holds(account: AccountId, knownAt: Day = Infinity): bigint {
+    let sum = 0n;
+    for (const t of this.authorizations(knownAt).values()) if (t.account === account) sum += t.hold;
+    return sum;
+  }
+
+  /** Ledger balance (value-dated up to today) minus active holds: the spendable figure. */
+  available(account: AccountId): bigint {
+    return this.balance(account, this.#today) - this.holds(account);
   }
 
   apply(event: Event): Outcome {
@@ -91,6 +131,33 @@ export class Ledger {
         for (const o of original) this.#book(event.account, 'REVERSAL', -o.amount, event.valueDay, event.id, event.reverses);
         return this.#record(event, 'ACCEPTED');
       }
+      case 'AUTHORIZATION': {
+        const cur = this.currency(event.account);
+        if (this.authorizations().has(event.authId)) return this.#record(event, 'REJECTED', `${event.authId} already exists`);
+        const amount = parse(cur, event.amount);
+        const ledger = this.balance(event.account, this.#today);
+        const holds = this.holds(event.account);
+        const after = ledger - holds - amount;
+        // Decisions carry their inputs: an auditor (or a model) can re-check why, not just what.
+        const why = `ledger ${format(cur, ledger)} - holds ${format(cur, holds)} - hold ${format(cur, amount)} = ${format(cur, after)}`;
+        const approved = after >= 0n;
+        this.#transition({ authId: event.authId, account: event.account, status: approved ? 'ACTIVE' : 'DECLINED', hold: approved ? amount : 0n, requested: amount, source: event.id });
+        return this.#record(event, approved ? 'APPROVED' : 'DECLINED', why);
+      }
+      case 'SETTLEMENT': {
+        const cur = this.currency(event.account);
+        const auth = this.authorizations().get(event.authId);
+        if (!auth) return this.#record(event, 'REJECTED', `no authorization ${event.authId} on record`);
+        if (auth.account !== event.account) return this.#record(event, 'REJECTED', `${event.authId} belongs to ${auth.account}`);
+        if (auth.status !== 'ACTIVE') return this.#record(event, 'REJECTED', `${event.authId} is ${auth.status}, not ACTIVE`);
+        const amount = parse(cur, event.amount);
+        if (amount > auth.hold)
+          return this.#record(event, 'REJECTED', `settles ${format(cur, amount)} above hold ${format(cur, auth.hold)}`);
+        this.#book(event.account, 'SETTLEMENT', -amount, event.valueDay, event.id, event.authId);
+        const released = auth.hold - amount;
+        this.#transition({ ...auth, status: 'SETTLED', hold: 0n, settled: amount, released, source: event.id });
+        return this.#record(event, 'ACCEPTED', `hold ${format(cur, auth.hold)} cleared, ${format(cur, released)} released`);
+      }
     }
   }
 
@@ -115,6 +182,10 @@ export class Ledger {
     const entry: Entry = Object.freeze({ seq: this.#entries.length + 1, account, kind, amount, valueDay, bookedDay: this.#today, source, ...(ref ? { ref } : {}) });
     this.#entries.push(entry);
     return entry;
+  }
+
+  #transition(t: Omit<AuthTransition, 'day'>): void {
+    this.#auths.push(Object.freeze({ ...t, day: this.#today }));
   }
 
   #record(event: Event, status: Status, reason?: string): Outcome {

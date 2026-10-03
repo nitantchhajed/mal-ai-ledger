@@ -9,3 +9,4 @@ Timestamps are local (IST), taken from `date` at the time of writing.
 | 2026-10-03 14:28 IST | Bootstrap: Node 24 native TS, node:test, zero runtime deps; TypeScript only for `tsc` type-checking. |
 | 2026-10-03 14:29 IST | Money: bigint minor units, strict parse (rejects excess precision), half-even rounding, largest-remainder allocate. BHD 10.000/3 → 3.334/3.333/3.333 proven by test. |
 | 2026-10-03 14:31 IST | Ledger core: frozen entries with valueDay + bookedDay (bitemporal), reversal as compensating entry, every event gets a recorded outcome (rejected ones too), duplicate event ids rejected (idempotent replay). |
+| 2026-10-03 14:32 IST | Authorizations: approve iff ledger(value ≤ today) − holds − hold ≥ 0; approval stores its inputs as the reason (audit trail). Auth lifecycle stored as frozen transitions, not a mutable status field, so Day-N auth state is queryable. Over-settlement, unknown/declined/settled auths rejected. |
