@@ -1,4 +1,9 @@
-import { type Currency, allocate, format, parse } from './money.ts';
+import { type Currency, allocate, divRoundHalfEven, format, parse } from './money.ts';
+
+/** Overdraft fee per currency, minor units. No BHD figure was given, so none is invented (see AMBIGUITIES.md). */
+export const OVERDRAFT_FEE: Partial<Record<Currency, bigint>> = { AED: 2500n };
+/** 0.04% per day = 4 / 10_000. Kept as an exact fraction; never a float. */
+export const DAILY_RATE = { num: 4n, den: 10_000n } as const;
 
 export type Day = number;
 export type AccountId = string;
@@ -11,7 +16,7 @@ export type Event =
   | { id: string; day: Day; type: 'AUTHORIZATION'; account: AccountId; authId: string; amount: string; valueDay: Day }
   | { id: string; day: Day; type: 'SETTLEMENT'; account: AccountId; authId: string; amount: string; valueDay: Day };
 
-export type EntryKind = 'CREDIT' | 'DEBIT' | 'REVERSAL' | 'SETTLEMENT';
+export type EntryKind = 'CREDIT' | 'DEBIT' | 'REVERSAL' | 'SETTLEMENT' | 'FEE' | 'FEE_REVERSAL' | 'INTEREST';
 
 /**
  * One line in the journal. Signed amount: credit > 0, debit < 0.
@@ -38,6 +43,25 @@ export interface Outcome {
   readonly reason?: string; // why rejected/declined, or the inputs an approval was based on
 }
 
+/**
+ * Interest accrued for one value day, booked at some end-of-day. Off-balance until capitalized.
+ * When a backdated entry restates a day, a *delta* accrual is appended; earlier accruals stay.
+ */
+export interface Accrual {
+  readonly account: AccountId;
+  readonly forDay: Day;
+  readonly amount: bigint;
+  readonly bookedDay: Day;
+}
+
+/** What one end-of-day run did. */
+export interface DayClose {
+  readonly day: Day;
+  readonly entries: readonly Entry[]; // fees, fee reversals, capitalization booked by this run
+  readonly accruals: readonly Accrual[];
+  readonly errors: readonly string[];
+}
+
 export type AuthStatus = 'ACTIVE' | 'DECLINED' | 'SETTLED';
 
 /**
@@ -62,9 +86,14 @@ export class Ledger {
   readonly #entries: Entry[] = [];
   readonly #outcomes: Outcome[] = [];
   readonly #auths: AuthTransition[] = [];
+  readonly #accruals: Accrual[] = [];
+  readonly #closes: DayClose[] = [];
+  readonly #windowEnd: Day;
 
-  constructor(accounts: Record<AccountId, Currency>) {
+  /** windowEnd: the business day whose close capitalizes accrued interest. */
+  constructor(accounts: Record<AccountId, Currency>, windowEnd: Day = Infinity) {
     this.#currency = new Map(Object.entries(accounts));
+    this.#windowEnd = windowEnd;
   }
 
   get today(): Day { return this.#today; }
@@ -72,6 +101,15 @@ export class Ledger {
   get entries(): readonly Entry[] { return Object.freeze([...this.#entries]); }
   get outcomes(): readonly Outcome[] { return Object.freeze([...this.#outcomes]); }
   get authTransitions(): readonly AuthTransition[] { return Object.freeze([...this.#auths]); }
+  get accruals(): readonly Accrual[] { return Object.freeze([...this.#accruals]); }
+  get closes(): readonly DayClose[] { return Object.freeze([...this.#closes]); }
+  get accounts(): AccountId[] { return [...this.#currency.keys()]; }
+
+  accrued(account: AccountId, forDay: Day = Infinity): bigint {
+    let sum = 0n;
+    for (const a of this.#accruals) if (a.account === account && a.forDay <= forDay) sum += a.amount;
+    return sum;
+  }
   currency(account: AccountId): Currency {
     const c = this.#currency.get(account);
     if (!c) throw new Error(`unknown account ${account}`);
@@ -161,9 +199,72 @@ export class Ledger {
     }
   }
 
-  /** Advance the business date. End-of-day processing hooks in here. */
-  closeDay(): void {
+  /**
+   * End of day. Re-evaluates every value day up to today against everything now known,
+   * so a backdated entry is picked up at the next close, then advances the business date.
+   *
+   * Fees: a day owes one fee iff its close *before that day's own fee* is negative. If it owes
+   * one and none is booked, book it; if one is booked but no longer owed (a backdated credit or
+   * reversal cured the day), book a FEE_REVERSAL. Net fee per (account, day) is always 0 or 1 fee.
+   * Days run in order because a fee on day d is part of day d+1's balance.
+   *
+   * Interest: accrual for a day = round(close * rate) on positive closes. If that differs from
+   * what is already accrued for the day, append the difference. Capitalization = sum of accruals,
+   * by construction, so the two can never drift.
+   */
+  closeDay(): DayClose {
+    const day = this.#today;
+    const firstEntry = this.#entries.length;
+    const firstAccrual = this.#accruals.length;
+    const errors: string[] = [];
+    // ponytail: rescans every day since Day 1 at each close, O(days x entries); bound it with a restatement horizon at scale
+    for (const account of this.#currency.keys()) {
+      for (let d = 1; d <= day; d++) {
+        this.#restateFee(account, d, errors);
+        this.#restateAccrual(account, d);
+      }
+      if (day === this.#windowEnd) {
+        const total = this.accrued(account);
+        if (total !== 0n) this.#book(account, 'INTEREST', total, day, `EOD${day}`);
+      }
+    }
+    const close: DayClose = Object.freeze({
+      day,
+      entries: Object.freeze(this.#entries.slice(firstEntry)),
+      accruals: Object.freeze(this.#accruals.slice(firstAccrual)),
+      errors: Object.freeze(errors),
+    });
+    this.#closes.push(close);
     this.#today++;
+    return close;
+  }
+
+  #restateFee(account: AccountId, d: Day, errors: string[]): void {
+    let preFee = 0n;
+    let booked = 0n; // net fee already on day d, as a positive number
+    for (const e of this.#entries) {
+      if (e.account !== account || e.valueDay > d) continue;
+      const isFee = e.kind === 'FEE' || e.kind === 'FEE_REVERSAL';
+      if (isFee && e.valueDay === d) booked -= e.amount;
+      else preFee += e.amount;
+    }
+    const cur = this.currency(account);
+    const fee = OVERDRAFT_FEE[cur];
+    if (fee === undefined) {
+      if (preFee < 0n) errors.push(`${account} Day ${d} closes ${format(cur, preFee)} but no overdraft fee is defined for ${cur}`);
+      return;
+    }
+    const owed = preFee < 0n ? fee : 0n;
+    if (owed > booked) this.#book(account, 'FEE', -(owed - booked), d, `EOD${this.#today}`);
+    if (owed < booked) this.#book(account, 'FEE_REVERSAL', booked - owed, d, `EOD${this.#today}`);
+  }
+
+  #restateAccrual(account: AccountId, d: Day): void {
+    const close = this.balance(account, d);
+    const due = close > 0n ? divRoundHalfEven(close * DAILY_RATE.num, DAILY_RATE.den) : 0n;
+    const have = this.accrued(account, d) - this.accrued(account, d - 1);
+    if (due !== have)
+      this.#accruals.push(Object.freeze({ account, forDay: d, amount: due - have, bookedDay: this.#today }));
   }
 
   #validate(e: Event): string | undefined {
