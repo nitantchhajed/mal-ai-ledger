@@ -288,6 +288,7 @@ export class Ledger {
       let amt: bigint;
       try { amt = parse(this.currency(e.account), e.amount); } catch (x) { return (x as Error).message; }
       if (amt <= 0n) return `amount must be positive, got ${e.amount}`;
+      if (e.type === 'CREDIT' && BigInt(e.instalments ?? 1) > amt) return `cannot split ${e.amount} into ${e.instalments} non-zero instalments`;
     }
     return undefined;
   }
