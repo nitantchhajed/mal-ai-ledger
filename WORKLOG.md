@@ -2,12 +2,12 @@
 
 Timestamps are local (IST), taken from `date` at the time of writing.
 
-The research, hand replay, criteria analysis and design decisions (13:18–14:28) are mine, with light AI help. From 14:28 the implementation, tests and doc drafts were produced with Claude Code against those decisions, which is why those entries are minutes apart. See README, "How this was built".
+Claude Code was used throughout: research, the hand check of the stream, criteria verdicts, design, implementation and doc drafts. That's why build entries are minutes apart. I set the constraints, made the final calls and reviewed the reasoning. See README, "How this was built".
 
 | When | What |
 |---|---|
-| 2026-10-03 13:18 IST | Read the brief. Researched Mal (AI-native Islamic digital bank, Abu Dhabi, CBUAE in-principle licence) to frame trade-offs. |
-| 2026-10-03 13:30 IST | Hand-replayed the stream on paper before writing code: E7 cascades into three fees (D2, D4, D5), Auth-B is declined, 3 × 3.334 ≠ 10.000. Turned it into a phase plan with AI help. |
+| 2026-10-03 13:18 IST | Read the brief. Claude Code researched Mal (AI-native Islamic digital bank, Abu Dhabi, CBUAE in-principle licence) to frame trade-offs. |
+| 2026-10-03 13:30 IST | Claude Code hand-checked the stream before any code was written: E7 cascades into three fees (D2, D4, D5), Auth-B is declined, 3 × 3.334 ≠ 10.000. It drafted a phase plan; I set the constraints (TypeScript, one-line conventional commits, public repo) and approved it. |
 | 2026-10-03 14:28 IST | Bootstrap: Node 24 native TS, node:test, zero runtime deps; TypeScript only for `tsc` type-checking. |
 | 2026-10-03 14:29 IST | Money: bigint minor units, strict parse (rejects excess precision), half-even rounding, largest-remainder allocate. BHD 10.000/3 → 3.334/3.333/3.333 proven by test. |
 | 2026-10-03 14:31 IST | Ledger core: frozen entries with valueDay + bookedDay (bitemporal), reversal as compensating entry, every event gets a recorded outcome (rejected ones too), duplicate event ids rejected (idempotent replay). |
@@ -30,3 +30,4 @@ The research, hand replay, criteria analysis and design decisions (13:18–14:28
 | 2026-10-03 15:24 IST | Started fixing the findings of an AI-assisted code review of src/, test/ and bench/. Before touching code I reproduced each one with a scratch script. Confirmed six: a reversal value-dated before its original was accepted (it credits days the original never touched and pays interest on them); future value dates were invisible to available balance (funds could be committed twice, including by a forward-dated settlement that freed its hold early); closing past the window end broke Σ accruals == capitalized; more instalments than minor units booked 0.00 entries; the instalment number encoded in the source ID broke reversals for IDs containing '#'; the replay printed nothing on Node versions without import.meta.main. |
 | 2026-10-03 15:26 IST | Fixed each one as its own commit with a test. Diffed the replay output before and after: identical (AED 466.03 / BHD 10.008). 43/43 green, typecheck clean, known-gap still fails as intended. |
 | 2026-10-03 15:27 IST | Left as documented gaps: a duplicate event ID returns REJECTED rather than the original response (ARCHITECTURE §3 row 2); the bench's random-number generator overflows 2^53 and repeats data, which doesn't change the scaling trend because cost follows entry and day counts, not amounts. Updated AMBIGUITIES (A3, A20, A29, A31), NUMBERS, REJECTED (R9) and README to match. |
+| 2026-10-03 15:44 IST | Corrected the attribution in README and in this log's preamble and first two rows: the research, hand check, criteria verdicts and design were done by Claude Code, not by me on paper. |
