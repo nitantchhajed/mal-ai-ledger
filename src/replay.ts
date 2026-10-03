@@ -106,4 +106,4 @@ export function report(l: Ledger): string {
   return out.join('\n');
 }
 
-if (import.meta.main) console.log(report(replay()));
+console.log(report(replay()));
