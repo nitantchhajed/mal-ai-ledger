@@ -43,7 +43,7 @@ test('a reversal cannot be value-dated before the entry it reverses', () => {
 
 test('instalments book separately and sum exactly', () => {
   const l = fresh();
-  l.apply({ id: 'E10', day: 5, type: 'CREDIT', account: 'ACC-002', amount: '10.000', valueDay: 5, instalments: 3 });
+  l.apply({ id: 'E10', day: 1, type: 'CREDIT', account: 'ACC-002', amount: '10.000', valueDay: 1, instalments: 3 });
   assert.deepEqual(l.entries.map(e => e.amount), [3334n, 3333n, 3333n]);
   assert.equal(l.balance('ACC-002'), 10000n);
 });
@@ -54,10 +54,11 @@ test('boundary validation rejects and records, never throws', () => {
   assert.equal(l.apply({ id: 'X2', day: 1, type: 'DEBIT', account: 'ACC-404', amount: '1.00', valueDay: 1 }).status, 'REJECTED');
   assert.equal(l.apply({ id: 'X3', day: 1, type: 'CREDIT', account: 'ACC-001', amount: '0.00', valueDay: 1 }).status, 'REJECTED');
   assert.equal(l.apply({ id: 'X4', day: 1, type: 'CREDIT', account: 'ACC-001', amount: '1.00', valueDay: 1, instalments: 0 }).status, 'REJECTED');
+  assert.equal(l.apply({ id: 'X5', day: 1, type: 'DEBIT', account: 'ACC-001', amount: '1.00', valueDay: 2 }).status, 'REJECTED', 'future value date');
   l.apply({ id: 'E1', day: 1, type: 'CREDIT', account: 'ACC-001', amount: '1.00', valueDay: 1 });
   assert.equal(l.apply({ id: 'E1', day: 1, type: 'CREDIT', account: 'ACC-001', amount: '1.00', valueDay: 1 }).status, 'REJECTED', 'replayed event id is not double-booked');
   assert.equal(l.balance('ACC-001'), 100n);
-  assert.equal(l.outcomes.length, 6, 'every event, rejected or not, is in the log');
+  assert.equal(l.outcomes.length, 7, 'every event, rejected or not, is in the log');
 });
 
 test('append-only: entries and outcomes are frozen', () => {
@@ -76,7 +77,7 @@ test('append-only: history arrays cannot be spliced by callers', () => {
 
 test('reversing an instalment credit reverses every instalment', () => {
   const l = fresh();
-  l.apply({ id: 'E10', day: 5, type: 'CREDIT', account: 'ACC-002', amount: '10.000', valueDay: 5, instalments: 3 });
-  assert.equal(l.apply({ id: 'R', day: 5, type: 'REVERSAL', account: 'ACC-002', reverses: 'E10', valueDay: 5 }).reason, '-10.000 value D5');
+  l.apply({ id: 'E10', day: 1, type: 'CREDIT', account: 'ACC-002', amount: '10.000', valueDay: 1, instalments: 3 });
+  assert.equal(l.apply({ id: 'R', day: 1, type: 'REVERSAL', account: 'ACC-002', reverses: 'E10', valueDay: 1 }).reason, '-10.000 value D1');
   assert.equal(l.balance('ACC-002'), 0n);
 });

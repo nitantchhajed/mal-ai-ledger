@@ -277,6 +277,8 @@ export class Ledger {
     if (this.#seen.has(e.id)) return `duplicate event id ${e.id}`;
     if (!this.#currency.has(e.account)) return `unknown account ${e.account}`;
     if (!Number.isInteger(e.valueDay) || e.valueDay < 1) return `invalid value day ${e.valueDay}`;
+    // A future-dated debit would sit outside available balance until its day, so funds could be committed twice.
+    if (e.valueDay > this.#today) return `value day ${e.valueDay} is after business day ${this.#today}`;
     if (e.type === 'CREDIT' && e.instalments !== undefined && !(Number.isInteger(e.instalments) && e.instalments >= 1))
       return `invalid instalment count ${e.instalments}`;
     if ('amount' in e) {
