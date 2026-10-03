@@ -32,6 +32,15 @@ test('reversal is a compensating entry; the original stays', () => {
   assert.equal(l.apply({ id: 'E9c', day: 1, type: 'REVERSAL', account: 'ACC-001', reverses: 'E9', valueDay: 1 }).status, 'REJECTED', 'reversals are not reversible');
 });
 
+test('a reversal cannot be value-dated before the entry it reverses', () => {
+  const l = fresh();
+  l.closeDay(); // -> day 2
+  l.apply({ id: 'D', day: 2, type: 'DEBIT', account: 'ACC-001', amount: '500.00', valueDay: 2 });
+  const o = l.apply({ id: 'R', day: 2, type: 'REVERSAL', account: 'ACC-001', reverses: 'D', valueDay: 1 });
+  assert.equal(o.status, 'REJECTED');
+  assert.equal(l.balance('ACC-001', 1), 0n, 'Day 1 never sees the reversal');
+});
+
 test('instalments book separately and sum exactly', () => {
   const l = fresh();
   l.apply({ id: 'E10', day: 5, type: 'CREDIT', account: 'ACC-002', amount: '10.000', valueDay: 5, instalments: 3 });

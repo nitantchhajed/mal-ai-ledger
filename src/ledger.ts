@@ -168,6 +168,9 @@ export class Ledger {
         if (original.some(e => e.account !== event.account)) return this.#record(event, 'REJECTED', `${event.reverses} belongs to another account`);
         if (this.#entries.some(e => e.kind === 'REVERSAL' && e.ref === event.reverses))
           return this.#record(event, 'REJECTED', `${event.reverses} already reversed`);
+        // Earlier than the original would credit days the debit never touched, and pay interest on them.
+        if (event.valueDay < original[0]!.valueDay)
+          return this.#record(event, 'REJECTED', `value D${event.valueDay} is before ${event.reverses}'s value D${original[0]!.valueDay}`);
         for (const o of original) this.#book(event.account, 'REVERSAL', -o.amount, event.valueDay, event.id, event.reverses);
         const back = -original.reduce((s, o) => s + o.amount, 0n);
         return this.#record(event, 'ACCEPTED', `${back > 0n ? '+' : ''}${format(this.currency(event.account), back)} value D${event.valueDay}`);
