@@ -85,6 +85,7 @@ export class Ledger {
   readonly #currency: ReadonlyMap<AccountId, Currency>;
   readonly #entries: Entry[] = [];
   readonly #outcomes: Outcome[] = [];
+  readonly #seen = new Set<string>(); // ponytail: every id kept forever; a dedupe window per source at scale
   readonly #auths: AuthTransition[] = [];
   readonly #accruals: Accrual[] = [];
   readonly #closes: DayClose[] = [];
@@ -270,7 +271,7 @@ export class Ledger {
   }
 
   #validate(e: Event): string | undefined {
-    if (this.#outcomes.some(o => o.event.id === e.id)) return `duplicate event id ${e.id}`;
+    if (this.#seen.has(e.id)) return `duplicate event id ${e.id}`;
     if (!this.#currency.has(e.account)) return `unknown account ${e.account}`;
     if (!Number.isInteger(e.valueDay) || e.valueDay < 1) return `invalid value day ${e.valueDay}`;
     if ('amount' in e) {
@@ -294,6 +295,7 @@ export class Ledger {
   #record(event: Event, status: Status, reason?: string): Outcome {
     const o: Outcome = Object.freeze({ event: Object.freeze({ ...event }), bookedDay: this.#today, status, ...(reason ? { reason } : {}) });
     this.#outcomes.push(o);
+    this.#seen.add(event.id);
     return o;
   }
 }
