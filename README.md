@@ -25,7 +25,7 @@ npm run test:known-gap
 
 | Script | What it does | Expected |
 |---|---|---|
-| `npm test` | 40 tests: money, ledger, authorizations, end-of-day, one test per acceptance criterion, invariants | all pass |
+| `npm test` | 43 tests: money, ledger, authorizations, end-of-day, one test per acceptance criterion, invariants | all pass |
 | `npm run replay` | Replays the six-day stream and prints the per-day report | see below |
 | `npm run typecheck` | `tsc` in strict mode, no emit | no output |
 | `npm run bench` | Ingest and end-of-day timings at 600 / 6k / 60k synthetic events (feeds ARCHITECTURE.md §1) | timings |
@@ -110,3 +110,9 @@ test/known-gap.ts   the deliberately failing test
 | [AMBIGUITIES.md](AMBIGUITIES.md) | 36 ambiguities, how each was resolved, and the test that pins it |
 | [NUMBERS.md](NUMBERS.md) | Every constant, why that value, and what breaks at half of it |
 | [WORKLOG.md](WORKLOG.md) | Timestamped log of the build |
+
+## How this was built
+
+- **My work, with light AI help:** the research on Mal and its UAE setting, working the event stream through by hand before any code (the −370.00 close, fees on Days 2, 4 and 5, Auth-B declined, 3 × 3.334 = 10.002, the 466.03 final), working out which criteria are wrong and why, and the design decisions: two dates per entry, fees judged before the day's own fee, refunding fees that a reversal makes unowed, no invented BHD fee, E10 treated as a late arrival.
+- **Built with Claude Code:** the implementation, the tests and first drafts of these documents were produced with Claude Code against those decisions. That's why the build commits are minutes apart. The replay output was checked against the hand calculation.
+- **Review:** a later AI-assisted code review found six edge cases, for example a reversal dated before its original, and future value dates. Each fix is its own commit with a test, and the scenario output didn't change.
