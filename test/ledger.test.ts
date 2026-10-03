@@ -82,3 +82,11 @@ test('reversing an instalment credit reverses every instalment', () => {
   assert.equal(l.apply({ id: 'R', day: 1, type: 'REVERSAL', account: 'ACC-002', reverses: 'E10', valueDay: 1 }).reason, '-10.000 value D1');
   assert.equal(l.balance('ACC-002'), 0n);
 });
+
+test('reversal matches the exact event id, even one containing "#"', () => {
+  const l = fresh();
+  l.apply({ id: 'P#1', day: 1, type: 'DEBIT', account: 'ACC-001', amount: '5.00', valueDay: 1 });
+  l.apply({ id: 'P', day: 1, type: 'DEBIT', account: 'ACC-001', amount: '7.00', valueDay: 1 });
+  assert.equal(l.apply({ id: 'R', day: 1, type: 'REVERSAL', account: 'ACC-001', reverses: 'P#1', valueDay: 1 }).reason, '+5.00 value D1');
+  assert.equal(l.balance('ACC-001'), -700n, 'P untouched');
+});
