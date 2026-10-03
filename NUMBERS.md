@@ -72,7 +72,7 @@ Every close re-evaluates every value day from Day 1. E7 arrives **3 days** late 
 Real holds expire, typically somewhere between a few days and a month depending on the scheme and merchant category. The brief only says Auth-B is never settled inside the window. Auth-B is declined anyway, so nothing here depends on expiry. ARCHITECTURE.md covers what expiry would do.
 
 ## Business days 1–6, first day = 1
-Value days are positive integers. `valueDay < 1` is rejected. There are no weekends or holidays: every day closes and accrues.
+Value days are positive integers, no later than the current business day. Anything else is rejected. There are no weekends or holidays: every day closes and accrues.
 
 ## Amounts as `bigint`
 `Number` holds integers exactly only up to 2^53 ≈ 9.0 × 10^15 minor units, about AED 90 trillion. That would be enough for balances. The risk is intermediate products: `close × rate numerator` and summing over many entries can exceed it quietly. `bigint` turns that silent precision loss into an impossibility, at a performance cost that only matters well beyond this scale.

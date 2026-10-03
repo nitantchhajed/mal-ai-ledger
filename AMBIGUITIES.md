@@ -17,7 +17,7 @@ Options: (a) sort by date first; (b) process in listed order and treat E10 as a 
 *Test:* `acceptance.test.ts`, "E10 dated Day 5 ... is booked Day 6".
 
 **A3. When end-of-day processing runs.**
-*Resolved:* the business day closes when the stream first shows an event dated after it, and every remaining day closes at the end of the window. Closing is explicit (`closeDay()`), never a side effect of `apply`.
+*Resolved:* the business day closes when the stream first shows an event dated after it, and every remaining day closes at the end of the window. Closing is explicit (`closeDay()`), never a side effect of `apply`. After the window-end close the ledger is closed: later events are rejected and recorded, and `closeDay()` refuses to run, so no accrual can be booked after interest has been capitalized.
 
 **A4. Business days vs calendar days.**
 There are no weekends or holidays. All six days close and accrue. (The UAE weekend is Saturday–Sunday. A real calendar would decide whether a weekend accrues, and most banks do accrue every calendar day.)
@@ -89,7 +89,7 @@ ACC-002 accrues nothing at the Day 5 close because E10 hasn't arrived yet. The D
 ## Authorizations and settlements
 
 **A20. Which ledger balance the approval check uses.**
-*Resolved:* every entry known so far with value date ≤ today, minus active holds. Future-value-dated entries are left out (none exist here), so a credit dated tomorrow can't fund a spend today.
+*Resolved:* every entry known so far with value date ≤ today, minus active holds. Entries value-dated after the current business day are rejected at the boundary. Leaving them out of the check instead would be lopsided: a credit dated tomorrow rightly can't fund a spend today, but a debit dated tomorrow would also be invisible, so the same funds could be committed twice. In production, scheduled payments wait upstream until their value date.
 
 **A21. Whether approvals are re-checked when backdating changes the past.** **(changes interpretation)**
 Under the restated Day 2 balance, Auth-A's approval would have failed: 250 − 620 − 200 = −570.
@@ -120,13 +120,13 @@ The brief says Auth-B is never settled in the window. *Resolved:* there's no exp
 
 **A29. "Three equal instalments" of BHD 10.000.** **(changes output)**
 10.000 / 3 = 3.333… can't be represented at 3 decimal places, so three exactly equal parts are impossible.
-*Resolved:* as equal as possible: 3.334 + 3.333 + 3.333, with the extra fils on the first. All three are value Day 5. They're booked as three separate entries (sourced `E10#1..#3`), so the ledger shows instalments rather than one 10.000 credit.
+*Resolved:* as equal as possible: 3.334 + 3.333 + 3.333, with the extra fils on the first. All three are value Day 5. They're booked as three separate entries (source `E10`, `part` 1–3), so the ledger shows instalments rather than one 10.000 credit.
 
 **A30. Can a reversal be reversed? Can it be partial?**
 *Resolved:* no and no. Reversing a reversal is rejected; the correct action is a new entry. A reversal of a multi-instalment credit reverses every instalment (this was a bug fixed during the build; see WORKLOG).
 
 **A31. A reversal whose value date differs from the original's.**
-E9 matches E7 (both value Day 2). *Resolved:* the reversal posts at its own value date, whatever it is. If it were later than the original, the days in between would correctly stay restated as debited.
+E9 matches E7 (both value Day 2). *Resolved:* the reversal posts at its own value date if that's on or after the original's. If it's later, the days in between correctly stay restated as debited. A reversal value-dated *before* the original is rejected: it would credit days the original never touched, and those days would earn interest on money that was never there.
 
 **A32. Rejected events and append-only.**
 Does "no event record is ever mutated or deleted" cover rejected events?

@@ -67,10 +67,13 @@ The first version of `get entries()` returned `this.#entries` typed as `readonly
 Dropped in favour of an explicit `closeDay()` called by the replay driver. If `apply` closed days as a side effect, a single out-of-order event (E10) could close or skip days, and the ledger would depend on what order its caller fed it.
 
 **R6. Matching a reversal to its original by exact event ID.**
-This was a real bug, not a design choice. Instalments are sourced `E10#1..#3`, so reversing `E10` matched nothing. A test I was writing for outcome reasons caught it. Fixed by matching the event-ID prefix (commit `fix(ledger)`).
+This was a real bug, not a design choice. Instalments are sourced `E10#1..#3`, so reversing `E10` matched nothing. A test I was writing for outcome reasons caught it. Fixed by matching the event-ID prefix (commit `fix(ledger)`). That fix was itself replaced later; see R9.
 
 **R7. A failing test that Auth-A was approved against restated −570.00.**
 This was my first candidate for the deliberately failing test. I dropped it because the gap only shows between Day 5 and Day 6: after E9 the restated Day 2 is positive again, so a test on the final state passes and hides the problem. Replaced with the decision-neutrality test (Auth-B), which fails on the final state. The Auth-A exposure is now explained in that test's annotation.
 
 **R8. A golden-file snapshot of the whole report.**
 Considered for P6. I dropped it because a snapshot fails on any formatting change and says nothing about *which* number is wrong. The acceptance suite asserts the numbers directly (final balances, per-day as-known closes, per-day accruals, fee value days).
+
+**R9. Encoding the instalment number in the source ID (`E10#1`) and matching reversals by prefix.**
+This was the R6 fix. A review pass found it breaks for any upstream event ID that contains `#`: `P#1` couldn't be reversed, and reversing `P` would also have matched an unrelated event called `P#1`. Replaced with a separate `part` field on the entry, so `source` is always the exact event ID.
