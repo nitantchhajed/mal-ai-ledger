@@ -28,6 +28,7 @@ npm run test:known-gap
 | `npm test` | 40 tests: money, ledger, authorizations, end-of-day, one test per acceptance criterion, invariants | all pass |
 | `npm run replay` | Replays the six-day stream and prints the per-day report | see below |
 | `npm run typecheck` | `tsc` in strict mode, no emit | no output |
+| `npm run bench` | Ingest and end-of-day timings at 600 / 6k / 60k synthetic events (feeds ARCHITECTURE.md §1) | timings |
 | `npm run test:known-gap` | The **one deliberately failing test**, annotated inline (`test/known-gap.ts`) | **fails**, on purpose |
 
 `npm test` only picks up `*.test.ts`, so the known-gap test doesn't turn the main suite red.
@@ -95,6 +96,7 @@ src/money.ts        currencies, parse/format, half-even rounding, exact allocati
 src/ledger.ts       the ledger: journal, authorizations, end-of-day fees/interest/capitalization
 src/scenario.ts     accounts, the event stream, the replay driver
 src/replay.ts       the per-day report (npm run replay)
+bench/scale.ts      scale benchmark (npm run bench)
 test/*.test.ts      the suite
 test/known-gap.ts   the deliberately failing test
 ```
