@@ -123,6 +123,13 @@ describe('invariants', () => {
     }
   });
 
+  test('after the window-end close the ledger is closed, so capitalization stays exact', () => {
+    const late = replay([...EVENTS, { id: 'E11', day: 7, type: 'DEBIT', account: 'ACC-001', amount: '400.00', valueDay: 3 }]);
+    assert.equal(outcome(late, 'E11').status, 'REJECTED');
+    assert.throws(() => late.closeDay(), /window closed/);
+    assert.equal(late.balance('ACC-001'), 46603n);
+  });
+
   test('every inbound event has exactly one outcome', () => {
     assert.deepEqual(final.outcomes.map(o => o.event.id), EVENTS.map(e => e.id));
   });

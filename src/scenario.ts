@@ -26,7 +26,7 @@ export const EVENTS: readonly Event[] = [
 export function replay(events: readonly Event[] = EVENTS, windowEnd = WINDOW_END): Ledger {
   const ledger = new Ledger(ACCOUNTS, windowEnd);
   for (const e of events) {
-    while (ledger.today < e.day) ledger.closeDay();
+    while (ledger.today < Math.min(e.day, windowEnd + 1)) ledger.closeDay();
     ledger.apply(e);
   }
   while (ledger.today <= windowEnd) ledger.closeDay();

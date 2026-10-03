@@ -220,6 +220,8 @@ export class Ledger {
    */
   closeDay(): DayClose {
     const day = this.#today;
+    // Interest is already capitalized; another close would accrue amounts that never reach the account.
+    if (day > this.#windowEnd) throw new Error(`window closed at Day ${this.#windowEnd}`);
     const firstEntry = this.#entries.length;
     const firstAccrual = this.#accruals.length;
     const errors: string[] = [];
@@ -275,6 +277,7 @@ export class Ledger {
 
   #validate(e: Event): string | undefined {
     if (this.#seen.has(e.id)) return `duplicate event id ${e.id}`;
+    if (this.#today > this.#windowEnd) return `window closed at Day ${this.#windowEnd}`;
     if (!this.#currency.has(e.account)) return `unknown account ${e.account}`;
     if (!Number.isInteger(e.valueDay) || e.valueDay < 1) return `invalid value day ${e.valueDay}`;
     // A future-dated debit would sit outside available balance until its day, so funds could be committed twice.
